@@ -412,6 +412,288 @@ def _model_to_response(agent: ModelAgent, db: Session = None, include_transactio
     )
 
 
+async def trigger_agent_decision(agent_id: str, db: Session) -> dict:
+    """触发单个Agent的决策（供任务调度器调用）
+    
+    这是 trigger_decision API 端点的核心逻辑，提取出来供 task_executor 调用。
+    
+    Args:
+        agent_id: Agent ID
+        db: 数据库会话
+        
+    Returns:
+        dict: 包含 success 和 error_message 的结果字典
+    """
+    from app.db.models import LLMProviderModel, PromptTemplateModel, StockQuoteModel
+    from app.ai.llm_client import MultiProtocolLLMClient
+    from app.models.enums import LLMProtocol
+    from app.models.entities import PromptTemplate, Portfolio
+    from app.data.repositories import SentimentScoreRepository
+    
+    repo = ModelAgentRepository(db)
+    portfolio_repo = PortfolioRepository(db)
+    agent = repo.get_by_id(agent_id)
+    
+    if agent is None or agent.status == AgentStatus.DELETED:
+        return {"success": False, "error_message": f"Agent不存在: {agent_id}"}
+    
+    if agent.status == AgentStatus.PAUSED:
+        return {"success": False, "error_message": "Agent已暂停，无法触发决策"}
+    
+    # 获取LLM Provider配置
+    if not agent.provider_id:
+        return {"success": False, "error_message": "Agent未配置LLM渠道"}
+    
+    provider = db.query(LLMProviderModel).filter(
+        LLMProviderModel.provider_id == agent.provider_id
+    ).first()
+    
+    if provider is None:
+        return {"success": False, "error_message": f"LLM渠道不存在: {agent.provider_id}"}
+    
+    if not provider.is_active:
+        return {"success": False, "error_message": f"LLM渠道已禁用: {provider.name}"}
+    
+    # 使用Agent管理器执行决策
+    manager = get_agent_manager()
+    
+    # 初始化LLM客户端
+    try:
+        llm_client = MultiProtocolLLMClient(
+            protocol=LLMProtocol(provider.protocol),
+            api_base=provider.api_url,
+            api_key=provider.api_key,
+            default_model=agent.llm_model,
+            provider_id=provider.provider_id,
+        )
+        llm_client.set_agent_id(agent_id)
+        
+        # 设置日志记录回调
+        from app.db.models import LLMRequestLogModel
+        latest_llm_log_id = [None]
+        
+        def log_llm_request(
+            provider_id: str,
+            model_name: str,
+            agent_id: str,
+            request_content: str,
+            response_content: str,
+            duration_ms: int,
+            status: str,
+            error_message: str,
+            tokens_input: int,
+            tokens_output: int,
+        ):
+            try:
+                log_entry = LLMRequestLogModel(
+                    provider_id=provider_id or "",
+                    model_name=model_name or "",
+                    agent_id=agent_id,
+                    request_content=request_content[:10000] if request_content else "",
+                    response_content=response_content[:10000] if response_content else None,
+                    duration_ms=duration_ms,
+                    status=status,
+                    error_message=error_message,
+                    tokens_input=tokens_input,
+                    tokens_output=tokens_output,
+                )
+                db.add(log_entry)
+                db.flush()
+                latest_llm_log_id[0] = log_entry.id
+                db.commit()
+            except Exception as e:
+                logger.error(f"记录LLM请求日志失败: {e}")
+                db.rollback()
+        
+        llm_client.set_log_callback(log_llm_request)
+        manager.llm_client = llm_client
+    except Exception as e:
+        return {"success": False, "error_message": f"初始化LLM客户端失败: {str(e)}"}
+    
+    # 加载模板
+    if agent.template_id:
+        template_model = db.query(PromptTemplateModel).filter(
+            PromptTemplateModel.template_id == agent.template_id
+        ).first()
+        if template_model:
+            template = PromptTemplate(
+                template_id=template_model.template_id,
+                name=template_model.name,
+                content=template_model.content,
+                version=template_model.version,
+                created_at=template_model.created_at,
+                updated_at=template_model.updated_at,
+            )
+            manager.prompt_manager._templates[agent.template_id] = template
+    
+    # 加载portfolio
+    portfolio = portfolio_repo.get_by_agent_id(agent_id)
+    if not portfolio:
+        portfolio = Portfolio(
+            agent_id=agent_id,
+            cash=agent.current_cash or agent.initial_cash,
+            positions=[],
+        )
+    
+    # 准备市场数据
+    market_data = _get_market_data_for_prompt(db)
+    
+    from app.data.market_service import MarketDataService
+    market_service = MarketDataService(db)
+    prompt_market_data = market_service.get_market_data_for_prompt()
+    
+    # 获取情绪分数
+    sentiment_score = 0.0
+    sentiment_repo = SentimentScoreRepository(db)
+    latest_sentiment = sentiment_repo.get_latest()
+    if latest_sentiment is not None:
+        sentiment_score = latest_sentiment
+    elif prompt_market_data.get("market_sentiment"):
+        fear_greed = prompt_market_data["market_sentiment"].get("fear_greed_index", 50)
+        sentiment_score = (fear_greed - 50) / 50
+    
+    hot_stocks_quotes = _get_hot_stocks_quotes(db)
+    positions_quotes = _get_positions_quotes(db, agent_id)
+    
+    try:
+        result = await manager.execute_decision_cycle(
+            agent=agent,
+            portfolio=portfolio,
+            market_data=market_data,
+            financial_data={},
+            sentiment_score=sentiment_score,
+            market_sentiment=prompt_market_data.get("market_sentiment"),
+            index_overview=prompt_market_data.get("index_overview"),
+            hot_stocks=prompt_market_data.get("hot_stocks"),
+            hot_stocks_quotes=hot_stocks_quotes,
+            positions_quotes=positions_quotes,
+        )
+        
+        llm_log_id = latest_llm_log_id[0]
+        
+        # 如果决策成功，执行订单
+        executed_orders = []
+        if result.success and result.decisions:
+            from app.core.order_processor import OrderProcessor
+            from app.models.entities import Order
+            from app.models.enums import OrderSide, OrderStatus
+            from app.db.repositories import OrderRepository, TransactionRepository, PositionRepository
+            from app.db.models import OrderModel, TransactionModel
+            import uuid as uuid_module
+            
+            processor = OrderProcessor(check_trading_time=False)
+            order_repo = OrderRepository(db)
+            tx_repo = TransactionRepository(db)
+            position_repo = PositionRepository(db)
+            
+            for decision in result.decisions:
+                if decision.decision.value in ("hold", "wait"):
+                    order_id = str(uuid_module.uuid4())
+                    hold_order = OrderModel(
+                        order_id=order_id,
+                        agent_id=agent_id,
+                        llm_request_log_id=llm_log_id,
+                        stock_code=None,
+                        side="hold",
+                        quantity=None,
+                        price=None,
+                        status="filled",
+                        reason=decision.reason,
+                    )
+                    db.add(hold_order)
+                    
+                    hold_tx = TransactionModel(
+                        tx_id=str(uuid_module.uuid4()),
+                        order_id=order_id,
+                        agent_id=agent_id,
+                        stock_code=None,
+                        side="hold",
+                        quantity=None,
+                        price=None,
+                        commission=None,
+                        stamp_tax=None,
+                        transfer_fee=None,
+                    )
+                    db.add(hold_tx)
+                    db.commit()
+                    continue
+                
+                if decision.decision.value not in ("buy", "sell"):
+                    continue
+                
+                raw_stock_code = decision.stock_code or ""
+                stock_code = raw_stock_code.split(".")[0] if "." in raw_stock_code else raw_stock_code
+                quantity = decision.quantity
+                
+                stock_data = {}
+                quote_model = (
+                    db.query(StockQuoteModel)
+                    .filter(StockQuoteModel.stock_code == stock_code)
+                    .order_by(StockQuoteModel.trade_date.desc())
+                    .first()
+                )
+                if quote_model:
+                    stock_data = {
+                        "close": float(quote_model.close_price),
+                        "prev_close": float(quote_model.prev_close) if quote_model.prev_close else float(quote_model.close_price),
+                    }
+                
+                price = Decimal(str(decision.price or stock_data.get("close", 0)))
+                prev_close = Decimal(str(stock_data.get("prev_close", price)))
+                
+                if not stock_code or not quantity or quantity <= 0 or price <= 0:
+                    continue
+                
+                order = Order(
+                    order_id=str(uuid_module.uuid4()),
+                    agent_id=agent_id,
+                    stock_code=stock_code,
+                    side=OrderSide.BUY if decision.decision.value == "buy" else OrderSide.SELL,
+                    quantity=quantity,
+                    price=price,
+                    created_at=tz_now(),
+                    status=OrderStatus.PENDING,
+                    reason=decision.reason,
+                    llm_request_log_id=llm_log_id,
+                )
+                
+                order_result = processor.process_order(
+                    order=order,
+                    portfolio=portfolio,
+                    prev_close=prev_close,
+                )
+                
+                if order_result.success:
+                    order_repo.save(order_result.order)
+                    if order_result.transaction:
+                        tx_repo.save(order_result.transaction)
+                    position_repo.delete(agent_id, stock_code)
+                    for pos in portfolio.positions:
+                        if pos.stock_code == stock_code and pos.shares > 0:
+                            position_repo.save(agent_id, pos)
+                    executed_orders.append({
+                        "stock_code": stock_code,
+                        "side": decision.decision.value,
+                        "quantity": quantity,
+                        "price": float(price),
+                    })
+            
+            if executed_orders:
+                portfolio_repo.update_cash(agent_id, portfolio.cash)
+                agent.current_cash = portfolio.cash
+                repo.save(agent)
+        
+        return {
+            "success": result.success,
+            "executed_count": len(executed_orders),
+            "error_message": result.error_message,
+        }
+        
+    except Exception as e:
+        logger.exception(f"Agent {agent_id} 决策执行失败: {e}")
+        return {"success": False, "error_message": str(e)}
+
+
 @router.get(
     "",
     response_model=AgentListResponse,

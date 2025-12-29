@@ -281,7 +281,7 @@ async def trigger_task(
 ):
     """手动触发任务"""
     from app.core.task_executor import TaskExecutor
-    from app.ai.agent_manager import ModelAgentManager
+    from app.api.agents import trigger_agent_decision
     
     task_service = TaskService(db)
     
@@ -294,8 +294,8 @@ async def trigger_task(
     executor = TaskExecutor(db)
     
     async def decision_callback(agent_id: str):
-        agent_manager = ModelAgentManager(db)
-        return await agent_manager.trigger_decision(agent_id)
+        # 调用 agents 模块中的决策触发函数
+        return await trigger_agent_decision(agent_id, db)
     
     executor.set_decision_callback(decision_callback)
     
