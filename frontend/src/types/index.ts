@@ -220,6 +220,7 @@ export const TaskType = {
   AGENT_DECISION: 'agent_decision',
   QUOTE_SYNC: 'quote_sync',
   MARKET_REFRESH: 'market_refresh',
+  POSITION_QUOTE_SYNC: 'position_quote_sync',
 } as const;
 export type TaskType = typeof TaskType[keyof typeof TaskType];
 

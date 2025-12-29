@@ -22,6 +22,7 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
   agent_decision: 'Agent决策',
   quote_sync: '行情同步',
   market_refresh: '市场刷新',
+  position_quote_sync: '持仓行情',
 };
 
 /**
@@ -50,7 +51,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   triggeringTaskId = null,
 }) => {
   const [filterName, setFilterName] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'agent_decision' | 'quote_sync'>('all');
+  const [filterType, setFilterType] = useState<'all' | TaskType>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'paused'>('all');
 
   // 筛选任务
@@ -103,12 +104,17 @@ export const TaskList: React.FC<TaskListProps> = ({
 
   // Task type badge component
   const TaskTypeBadge: React.FC<{ taskType: TaskType }> = ({ taskType }) => {
-    const isAgentDecision = taskType === 'agent_decision';
+    const colorMap: Record<TaskType, string> = {
+      agent_decision: 'bg-blue-100 text-blue-600',
+      quote_sync: 'bg-purple-100 text-purple-600',
+      market_refresh: 'bg-orange-100 text-orange-600',
+      position_quote_sync: 'bg-teal-100 text-teal-600',
+    };
     return (
       <span
         className={`
           inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-          ${isAgentDecision ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}
+          ${colorMap[taskType] || 'bg-gray-100 text-gray-600'}
         `}
       >
         {TASK_TYPE_LABELS[taskType] || taskType}
@@ -226,12 +232,14 @@ export const TaskList: React.FC<TaskListProps> = ({
         />
         <select
           value={filterType}
-          onChange={(e) => setFilterType(e.target.value as 'all' | 'agent_decision' | 'quote_sync')}
+          onChange={(e) => setFilterType(e.target.value as 'all' | TaskType)}
           className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 border-none outline-none focus:ring-2 focus:ring-space-black/20 cursor-pointer"
         >
           <option value="all">全部类型</option>
           <option value="agent_decision">Agent决策</option>
           <option value="quote_sync">行情同步</option>
+          <option value="market_refresh">市场刷新</option>
+          <option value="position_quote_sync">持仓行情</option>
         </select>
         <select
           value={filterStatus}

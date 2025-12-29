@@ -487,84 +487,83 @@ async def trigger_agent_decision(agent_id: str, db: Session) -> dict:
                 agent_id: str,
                 request_content: str,
                 response_content: str,
-            duration_ms: int,
-            status: str,
-            error_message: str,
-            tokens_input: int,
-            tokens_output: int,
-        ):
-            try:
-                log_entry = LLMRequestLogModel(
-                    provider_id=provider_id or "",
-                    model_name=model_name or "",
-                    agent_id=agent_id,
-                    request_content=request_content[:10000] if request_content else "",
-                    response_content=response_content[:10000] if response_content else None,
-                    duration_ms=duration_ms,
-                    status=status,
-                    error_message=error_message,
-                    tokens_input=tokens_input,
-                    tokens_output=tokens_output,
-                )
-                db.add(log_entry)
-                db.flush()
-                latest_llm_log_id[0] = log_entry.id
-                db.commit()
-            except Exception as e:
-                logger.error(f"记录LLM请求日志失败: {e}")
-                db.rollback()
+                duration_ms: int,
+                status: str,
+                error_message: str,
+                tokens_input: int,
+                tokens_output: int,
+            ):
+                try:
+                    log_entry = LLMRequestLogModel(
+                        provider_id=provider_id or "",
+                        model_name=model_name or "",
+                        agent_id=agent_id,
+                        request_content=request_content[:10000] if request_content else "",
+                        response_content=response_content[:10000] if response_content else None,
+                        duration_ms=duration_ms,
+                        status=status,
+                        error_message=error_message,
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                    )
+                    db.add(log_entry)
+                    db.flush()
+                    latest_llm_log_id[0] = log_entry.id
+                    db.commit()
+                except Exception as e:
+                    logger.error(f"记录LLM请求日志失败: {e}")
+                    db.rollback()
+            
+            llm_client.set_log_callback(log_llm_request)
+            manager.llm_client = llm_client
+        except Exception as e:
+            return {"success": False, "error_message": f"初始化LLM客户端失败: {str(e)}"}
         
-        llm_client.set_log_callback(log_llm_request)
-        manager.llm_client = llm_client
-    except Exception as e:
-        return {"success": False, "error_message": f"初始化LLM客户端失败: {str(e)}"}
-    
-    # 加载模板
-    if agent.template_id:
-        template_model = db.query(PromptTemplateModel).filter(
-            PromptTemplateModel.template_id == agent.template_id
-        ).first()
-        if template_model:
-            template = PromptTemplate(
-                template_id=template_model.template_id,
-                name=template_model.name,
-                content=template_model.content,
-                version=template_model.version,
-                created_at=template_model.created_at,
-                updated_at=template_model.updated_at,
+        # 加载模板
+        if agent.template_id:
+            template_model = db.query(PromptTemplateModel).filter(
+                PromptTemplateModel.template_id == agent.template_id
+            ).first()
+            if template_model:
+                template = PromptTemplate(
+                    template_id=template_model.template_id,
+                    name=template_model.name,
+                    content=template_model.content,
+                    version=template_model.version,
+                    created_at=template_model.created_at,
+                    updated_at=template_model.updated_at,
+                )
+                manager.prompt_manager._templates[agent.template_id] = template
+        
+        # 加载portfolio
+        portfolio = portfolio_repo.get_by_agent_id(agent_id)
+        if not portfolio:
+            portfolio = Portfolio(
+                agent_id=agent_id,
+                cash=agent.current_cash or agent.initial_cash,
+                positions=[],
             )
-            manager.prompt_manager._templates[agent.template_id] = template
-    
-    # 加载portfolio
-    portfolio = portfolio_repo.get_by_agent_id(agent_id)
-    if not portfolio:
-        portfolio = Portfolio(
-            agent_id=agent_id,
-            cash=agent.current_cash or agent.initial_cash,
-            positions=[],
-        )
-    
-    # 准备市场数据
-    market_data = _get_market_data_for_prompt(db)
-    
-    from app.data.market_service import MarketDataService
-    market_service = MarketDataService(db)
-    prompt_market_data = market_service.get_market_data_for_prompt()
-    
-    # 获取情绪分数
-    sentiment_score = 0.0
-    sentiment_repo = SentimentScoreRepository(db)
-    latest_sentiment = sentiment_repo.get_latest()
-    if latest_sentiment is not None:
-        sentiment_score = latest_sentiment
-    elif prompt_market_data.get("market_sentiment"):
-        fear_greed = prompt_market_data["market_sentiment"].get("fear_greed_index", 50)
-        sentiment_score = (fear_greed - 50) / 50
-    
-    hot_stocks_quotes = _get_hot_stocks_quotes(db)
-    positions_quotes = _get_positions_quotes(db, agent_id)
-    
-    try:
+        
+        # 准备市场数据
+        market_data = _get_market_data_for_prompt(db)
+        
+        from app.data.market_service import MarketDataService
+        market_service = MarketDataService(db)
+        prompt_market_data = market_service.get_market_data_for_prompt()
+        
+        # 获取情绪分数
+        sentiment_score = 0.0
+        sentiment_repo = SentimentScoreRepository(db)
+        latest_sentiment = sentiment_repo.get_latest()
+        if latest_sentiment is not None:
+            sentiment_score = latest_sentiment
+        elif prompt_market_data.get("market_sentiment"):
+            fear_greed = prompt_market_data["market_sentiment"].get("fear_greed_index", 50)
+            sentiment_score = (fear_greed - 50) / 50
+        
+        hot_stocks_quotes = _get_hot_stocks_quotes(db)
+        positions_quotes = _get_positions_quotes(db, agent_id)
+        
         result = await manager.execute_decision_cycle(
             agent=agent,
             portfolio=portfolio,

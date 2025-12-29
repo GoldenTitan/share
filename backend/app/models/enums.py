@@ -77,3 +77,4 @@ class TaskType(str, Enum):
     AGENT_DECISION = "agent_decision"  # Agent决策任务
     QUOTE_SYNC = "quote_sync"          # 行情同步任务
     MARKET_REFRESH = "market_refresh"  # 市场数据刷新任务
+    POSITION_QUOTE_SYNC = "position_quote_sync"  # 持仓股票行情同步任务

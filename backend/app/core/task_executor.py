@@ -135,6 +135,13 @@ class TaskExecutor:
                 log.status = TaskLogStatus.SUCCESS.value if result.get("status") == "success" else TaskLogStatus.FAILED.value
                 if result.get("error_message"):
                     log.error_message = result.get("error_message")
+                    
+            elif task_type == TaskType.POSITION_QUOTE_SYNC:
+                result = await self._execute_position_quote_sync(config)
+                log.agent_results = [result]
+                log.status = TaskLogStatus.SUCCESS.value if result.get("status") == "success" else TaskLogStatus.FAILED.value
+                if result.get("error_message"):
+                    log.error_message = result.get("error_message")
             else:
                 raise ValueError(f"未知的任务类型: {task_type}")
             
@@ -270,6 +277,85 @@ class TaskExecutor:
             
             return {
                 "task_type": "market_refresh",
+                "status": "failed",
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "duration_ms": duration_ms,
+                "error_message": str(e),
+            }
+    
+    async def _execute_position_quote_sync(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """执行持仓股票行情同步任务
+        
+        获取所有Agent的持仓股票，同步这些股票的实时行情数据。
+        只同步持仓股票，不做全量同步，提高效率。
+        
+        Args:
+            config: 任务配置
+                - days: 同步天数，默认1天（只同步最新行情）
+                
+        Returns:
+            执行结果字典
+        """
+        started_at = now()
+        
+        try:
+            from app.data.quote_service import QuoteService
+            from app.db.models import PositionModel
+            
+            # 获取所有持仓股票代码（去重）
+            positions = self.db.query(PositionModel.stock_code).filter(
+                PositionModel.shares > 0
+            ).distinct().all()
+            
+            stock_codes = [p.stock_code for p in positions if p.stock_code]
+            
+            if not stock_codes:
+                completed_at = now()
+                duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+                return {
+                    "task_type": "position_quote_sync",
+                    "status": "success",
+                    "started_at": started_at.isoformat(),
+                    "completed_at": completed_at.isoformat(),
+                    "duration_ms": duration_ms,
+                    "stock_count": 0,
+                    "success_count": 0,
+                    "fail_count": 0,
+                    "message": "没有持仓股票需要同步",
+                }
+            
+            # 同步持仓股票行情
+            quote_service = QuoteService(self.db)
+            days = config.get("days", 1)  # 默认只同步最新1天的行情
+            
+            result = await quote_service.sync_specific_stocks(stock_codes, days)
+            
+            completed_at = now()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+            
+            return {
+                "task_type": "position_quote_sync",
+                "status": "success" if result.success else "failed",
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "duration_ms": duration_ms,
+                "stock_count": len(stock_codes),
+                "stock_codes": stock_codes,
+                "success_count": result.success_count,
+                "fail_count": result.fail_count,
+                "message": result.message,
+                "error_message": None if result.success else result.message,
+            }
+            
+        except Exception as e:
+            completed_at = now()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+            
+            logger.error(f"持仓股票行情同步任务执行失败: {e}")
+            
+            return {
+                "task_type": "position_quote_sync",
                 "status": "failed",
                 "started_at": started_at.isoformat(),
                 "completed_at": completed_at.isoformat(),

@@ -26,6 +26,8 @@ interface FormData {
   market_refresh_sentiment: boolean;
   market_refresh_indices: boolean;
   market_refresh_hot_stocks: boolean;
+  // Position quote sync config
+  position_quote_sync_days: number;
 }
 
 interface FormErrors {
@@ -55,6 +57,7 @@ const TASK_TYPE_OPTIONS = [
   { value: 'agent_decision', label: 'Agent决策', description: '执行AI Agent的交易决策' },
   { value: 'quote_sync', label: '行情同步', description: '同步股票行情数据' },
   { value: 'market_refresh', label: '市场刷新', description: '刷新市场情绪、指数、热门股票' },
+  { value: 'position_quote_sync', label: '持仓行情同步', description: '同步所有Agent持仓股票的实时行情' },
 ];
 
 /**
@@ -88,6 +91,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({
     market_refresh_sentiment: task?.task_type === 'market_refresh' && task?.config?.refresh_types ? (task.config.refresh_types as string[]).includes('sentiment') : true,
     market_refresh_indices: task?.task_type === 'market_refresh' && task?.config?.refresh_types ? (task.config.refresh_types as string[]).includes('indices') : true,
     market_refresh_hot_stocks: task?.task_type === 'market_refresh' && task?.config?.refresh_types ? (task.config.refresh_types as string[]).includes('hot_stocks') : true,
+    // Position quote sync config
+    position_quote_sync_days: task?.task_type === 'position_quote_sync' && task?.config?.days ? (task.config.days as number) : 1,
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -201,6 +206,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({
         if (formData.market_refresh_hot_stocks) refreshTypes.push('hot_stocks');
         taskData.config = {
           refresh_types: refreshTypes,
+        };
+      }
+
+      // Add config for position_quote_sync type
+      if (formData.task_type === 'position_quote_sync') {
+        taskData.config = {
+          days: formData.position_quote_sync_days,
         };
       }
 
@@ -532,6 +544,28 @@ export const TaskForm: React.FC<TaskFormProps> = ({
               />
               <span className="text-sm text-gray-700">热门股票</span>
             </label>
+          </div>
+        </div>
+      )}
+
+      {/* Position Quote Sync Config - Only for position_quote_sync type */}
+      {formData.task_type === 'position_quote_sync' && (
+        <div className="flex flex-col gap-3 p-4 bg-gray-50/50 rounded-lg border border-gray-200/40">
+          <Label>持仓行情同步配置</Label>
+          <span className="text-xs text-gray-400">自动获取所有Agent持仓股票并同步行情</span>
+          
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-gray-500">同步天数</label>
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={formData.position_quote_sync_days}
+              onChange={(e) => setFormData(prev => ({ ...prev, position_quote_sync_days: parseInt(e.target.value) || 1 }))}
+              disabled={loading || submitting}
+              className="shadow-inner bg-white border border-gray-200/40 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-space-black/20 focus:outline-none w-32"
+            />
+            <span className="text-xs text-gray-400">建议设置为1天，仅同步最新行情以提高效率</span>
           </div>
         </div>
       )}
