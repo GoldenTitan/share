@@ -206,6 +206,17 @@ class PromptContext:
     hot_stocks: Optional[List[Dict[str, Any]]] = None  # 热门股票
     hot_stocks_quotes: Optional[str] = None  # 热门股票近3日行情（markdown表格）
     limit_up_down: Optional[Dict[str, Any]] = None  # 涨跌停统计
+    
+    # 系统时间类
+    current_time: Optional[str] = None  # 当前时间 HH:MM:SS
+    current_date: Optional[str] = None  # 当前日期 YYYY-MM-DD
+    current_weekday: Optional[str] = None  # 星期几
+    is_trading_day: Optional[bool] = None  # 是否交易日
+    
+    # 涨停板数据类
+    limit_up_order_amount: Optional[str] = None  # 封单金额（亿元）
+    queue_amount: Optional[str] = None  # 当前排队金额
+    queue_position: Optional[str] = None  # 预估排队位置
 
 
 @dataclass

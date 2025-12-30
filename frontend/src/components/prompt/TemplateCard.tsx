@@ -25,6 +25,15 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
   market_sentiment: '市场情绪',
   history_trades: '交易历史',
   hot_stocks: '热门股票',
+  // 系统时间类
+  current_time: '当前时间',
+  current_date: '当前日期',
+  current_weekday: '星期',
+  is_trading_day: '是否交易日',
+  // 涨停板数据类
+  limit_up_order_amount: '封单金额',
+  queue_amount: '排队金额',
+  queue_position: '排队位置',
 };
 
 /**

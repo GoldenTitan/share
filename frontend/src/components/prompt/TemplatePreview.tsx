@@ -54,6 +54,15 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
   sector_flow: '板块资金',
   hot_stocks: '热门股票',
   limit_up_down: '涨跌停统计',
+  // 系统时间类
+  current_time: '当前时间',
+  current_date: '当前日期',
+  current_weekday: '星期',
+  is_trading_day: '是否交易日',
+  // 涨停板数据类
+  limit_up_order_amount: '封单金额',
+  queue_amount: '排队金额',
+  queue_position: '排队位置',
 };
 
 // Default sample data for preview
@@ -199,6 +208,15 @@ const DEFAULT_SAMPLE_DATA: Record<string, string> = {
     up_count: 2500,
     down_count: 1800,
   }, null, 2),
+  // 系统时间示例
+  current_time: '10:30:25',
+  current_date: '2024-12-30',
+  current_weekday: '星期一',
+  is_trading_day: '是',
+  // 涨停板数据示例
+  limit_up_order_amount: '2.5',
+  queue_amount: '0.8亿',
+  queue_position: '约32%位置',
 };
 
 /**

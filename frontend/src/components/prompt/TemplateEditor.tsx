@@ -54,6 +54,17 @@ const PLACEHOLDER_CATEGORIES = {
     { name: 'hot_stocks_quotes', label: '热门股票行情', description: '热门股票近3日行情（markdown表格）' },
     { name: 'limit_up_down', label: '涨跌停统计', description: '涨停跌停股票统计' },
   ],
+  '时间': [
+    { name: 'current_time', label: '当前时间', description: '当前系统时间（HH:MM:SS）' },
+    { name: 'current_date', label: '当前日期', description: '当前日期（YYYY-MM-DD）' },
+    { name: 'current_weekday', label: '星期', description: '当前星期几' },
+    { name: 'is_trading_day', label: '是否交易日', description: '当前是否为A股交易日' },
+  ],
+  '涨停': [
+    { name: 'limit_up_order_amount', label: '封单金额', description: '涨停板封单金额（亿元）' },
+    { name: 'queue_amount', label: '排队金额', description: '当前排队买入金额' },
+    { name: 'queue_position', label: '排队位置', description: '预估排队位置' },
+  ],
 };
 
 // 所有占位符的扁平列表
@@ -69,6 +80,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   '情绪': 'bg-pink-100 text-pink-700 border-pink-200',
   '历史': 'bg-gray-100 text-gray-700 border-gray-200',
   '大盘': 'bg-red-100 text-red-700 border-red-200',
+  '时间': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  '涨停': 'bg-amber-100 text-amber-700 border-amber-200',
 };
 
 interface TemplateEditorProps {

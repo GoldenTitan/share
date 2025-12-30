@@ -311,6 +311,11 @@ class ModelAgentManager:
                 positions_quotes=positions_quotes,  # 持仓股票历史行情
                 market_data=market_data,  # 同 current_market
                 hot_stocks_quotes=hot_stocks_quotes,  # 热门股票近3日行情
+                # 系统时间字段
+                current_time=datetime.now().strftime("%H:%M:%S"),
+                current_date=datetime.now().strftime("%Y-%m-%d"),
+                current_weekday=self._get_weekday_name(datetime.now().weekday()),
+                is_trading_day=self._is_trading_time(),
             )
             
             # 2. 渲染提示词
@@ -435,3 +440,35 @@ class ModelAgentManager:
     "reason": "决策理由"
 }}
 """
+    
+    def _get_weekday_name(self, weekday: int) -> str:
+        """获取星期几的中文名称"""
+        weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        return weekday_names[weekday] if 0 <= weekday <= 6 else "未知"
+    
+    def _is_trading_time(self) -> bool:
+        """
+        判断当前是否为A股交易时间
+        交易时间：周一至周五 9:30-11:30, 13:00-15:00
+        注意：不包含节假日判断，实际应用中需要接入交易日历
+        """
+        now = datetime.now()
+        weekday = now.weekday()
+        
+        # 周末不交易
+        if weekday >= 5:
+            return False
+        
+        # 检查时间段
+        current_time = now.hour * 100 + now.minute
+        
+        # 上午 9:30-11:30
+        morning_start = 930
+        morning_end = 1130
+        
+        # 下午 13:00-15:00
+        afternoon_start = 1300
+        afternoon_end = 1500
+        
+        return (morning_start <= current_time <= morning_end) or \
+               (afternoon_start <= current_time <= afternoon_end)

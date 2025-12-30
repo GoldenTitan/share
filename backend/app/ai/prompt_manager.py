@@ -334,6 +334,24 @@ class PromptManager:
         if context.limit_up_down is not None:
             result["limit_up_down"] = context.limit_up_down
         
+        # 系统时间类
+        if context.current_time is not None:
+            result["current_time"] = context.current_time
+        if context.current_date is not None:
+            result["current_date"] = context.current_date
+        if context.current_weekday is not None:
+            result["current_weekday"] = context.current_weekday
+        if context.is_trading_day is not None:
+            result["is_trading_day"] = "是" if context.is_trading_day else "否"
+        
+        # 涨停板数据类
+        if context.limit_up_order_amount is not None:
+            result["limit_up_order_amount"] = context.limit_up_order_amount
+        if context.queue_amount is not None:
+            result["queue_amount"] = context.queue_amount
+        if context.queue_position is not None:
+            result["queue_position"] = context.queue_position
+        
         return result
     
     def get_placeholders(self, content: str) -> List[str]:
@@ -414,6 +432,17 @@ SYSTEM_PLACEHOLDERS = [
     {"name": "hot_stocks", "label": "热门股票", "category": "大盘", "description": "当日热门股票排行"},
     {"name": "hot_stocks_quotes", "label": "热门股票行情", "category": "大盘", "description": "热门股票近3日行情（markdown表格）"},
     {"name": "limit_up_down", "label": "涨跌停统计", "category": "大盘", "description": "涨停跌停股票统计"},
+    
+    # 系统时间类
+    {"name": "current_time", "label": "当前时间", "category": "时间", "description": "当前系统时间（HH:MM:SS）"},
+    {"name": "current_date", "label": "当前日期", "category": "时间", "description": "当前日期（YYYY-MM-DD）"},
+    {"name": "current_weekday", "label": "星期", "category": "时间", "description": "当前星期几"},
+    {"name": "is_trading_day", "label": "是否交易日", "category": "时间", "description": "当前是否为A股交易日"},
+    
+    # 涨停板数据类
+    {"name": "limit_up_order_amount", "label": "封单金额", "category": "涨停", "description": "涨停板封单金额（亿元）"},
+    {"name": "queue_amount", "label": "排队金额", "category": "涨停", "description": "当前排队买入金额"},
+    {"name": "queue_position", "label": "排队位置", "category": "涨停", "description": "预估排队位置"},
 ]
 
 
