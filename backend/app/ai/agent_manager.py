@@ -3,9 +3,12 @@
 import uuid
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
+
+# 中国时区 (UTC+8)
+CHINA_TZ = timezone(timedelta(hours=8))
 
 from app.models.entities import (
     ModelAgent,
@@ -312,9 +315,9 @@ class ModelAgentManager:
                 market_data=market_data,  # 同 current_market
                 hot_stocks_quotes=hot_stocks_quotes,  # 热门股票近3日行情
                 # 系统时间字段
-                current_time=datetime.now().strftime("%H:%M:%S"),
-                current_date=datetime.now().strftime("%Y-%m-%d"),
-                current_weekday=self._get_weekday_name(datetime.now().weekday()),
+                current_time=datetime.now(CHINA_TZ).strftime("%H:%M:%S"),
+                current_date=datetime.now(CHINA_TZ).strftime("%Y-%m-%d"),
+                current_weekday=self._get_weekday_name(datetime.now(CHINA_TZ).weekday()),
                 is_trading_day=self._is_trading_time(),
             )
             
@@ -452,7 +455,7 @@ class ModelAgentManager:
         交易时间：周一至周五 9:30-11:30, 13:00-15:00
         注意：不包含节假日判断，实际应用中需要接入交易日历
         """
-        now = datetime.now()
+        now = datetime.now(CHINA_TZ)
         weekday = now.weekday()
         
         # 周末不交易
